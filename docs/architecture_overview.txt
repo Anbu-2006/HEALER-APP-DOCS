@@ -1,0 +1,109 @@
+================================================================================
+                        HEALER APP - ARCHITECTURE OVERVIEW
+================================================================================
+
+Project: Healer App
+Version: Development (80% Complete)
+Last Updated: January 2026
+
+================================================================================
+                              APPLICATION FLOW
+================================================================================
+
+1. APP LAUNCH
+   └── MainActivity (Entry Point)
+       ├── Displays welcome screen with app introduction
+       ├── Provides "Start Detection" call-to-action button
+       └── Navigates to SecondActivity on user interaction
+
+2. ACCIDENT DETECTION SCREEN
+   └── SecondActivity (Main Detection Interface)
+       ├── Initializes all sensor detectors
+       ├── Monitors multiple data streams simultaneously
+       ├── Processes sensor fusion for accident detection
+       └── Triggers emergency protocols when accident detected
+
+================================================================================
+                           DETECTION MODULE COMPONENTS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            DETECTION CAPABILITIES                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Component              │  Purpose                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ActivityDetector       │  Monitors user activity state (walking, driving)  │
+│  ShakeDetector          │  Detects sudden impacts and shaking motions       │
+│  SoundDetector          │  Analyzes ambient audio for crash sounds          │
+│  GravitySensor          │  Monitors gravitational forces and device tilt    │
+│  GyroDetector           │  Tracks rotational velocity and orientation       │
+│  LightSensor            │  Monitors ambient light level changes             │
+│  ProximitySensor        │  Detects nearby objects and obstructions          │
+│  LocationProvider       │  Provides GPS coordinates for emergency services  │
+│  OrientationHelper      │  Calculates device orientation in 3D space        │
+│  HighPassFilter         │  Filters sensor noise for accurate readings       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                              DATA FLOW DIAGRAM
+================================================================================
+
+    ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+    │   SENSORS    │────▶│  DETECTORS   │────▶│   FUSION     │
+    │              │     │              │     │   ENGINE     │
+    │ Accelerometer│     │ ShakeDetector│     │              │
+    │ Gyroscope    │     │ GyroDetector │     │  Analyzes    │
+    │ Microphone   │     │ SoundDetector│     │  combined    │
+    │ GPS          │     │ LocationProv │     │  sensor data │
+    │ Light        │     │ LightSensor  │     │              │
+    │ Proximity    │     │ ProximitySens│     │              │
+    └──────────────┘     └──────────────┘     └──────┬───────┘
+                                                      │
+                                                      ▼
+                                            ┌──────────────────┐
+                                            │ ACCIDENT DETECTED│
+                                            │                  │
+                                            │ • Alert User     │
+                                            │ • Log Event      │
+                                            │ • Notify Contacts│
+                                            │ • Share Location │
+                                            └──────────────────┘
+
+================================================================================
+                              TECHNOLOGY STACK
+================================================================================
+
+• Programming Language: Kotlin
+• Platform: Android (Native)
+• Minimum SDK: API 24 (Android 7.0 Nougat)
+• Build System: Gradle with Kotlin DSL
+• Architecture Pattern: Component-based modular design
+
+================================================================================
+                              SECURITY NOTES
+================================================================================
+
+This application handles sensitive user data including:
+- Real-time location information
+- Audio recordings (for sound detection)
+- Motion patterns and activity data
+
+All sensor data is processed locally on-device. The source code remains
+closed source during development to ensure security best practices are
+properly implemented before public release.
+
+================================================================================
+                              FUTURE DEVELOPMENT
+================================================================================
+
+Planned features for upcoming releases:
+• Emergency contact auto-notification
+• Integration with emergency services APIs
+• Cloud backup for incident reports
+• Wearable device support
+• Machine learning-based detection improvements
+
+================================================================================
+                           DOCUMENT END
+================================================================================
+
