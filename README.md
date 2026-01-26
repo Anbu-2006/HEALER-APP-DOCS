@@ -36,7 +36,7 @@ This project is actively under development with core detection features implemen
 >
 > **This project is currently Closed Source for security reasons.**
 >
-> The source code will be released in **Q2 2026**.
+> The source code will be released in **DECEMBER 2026**.
 >
 > This repository contains **documentation and architecture designs only**.
 >
