@@ -1,28 +1,23 @@
-PROPRIETARY SOFTWARE LICENSE
+PROPRIETARY LICENSE
 
 Copyright (c) 2026 Anbu. All Rights Reserved.
 
-NOTICE: This software and its associated documentation are proprietary
-and confidential. The source code is currently private and not available
-for distribution, modification, or public access.
+This project and its source code are the exclusive intellectual property
+of Anbu (@Anbu-2006). No part of this codebase may be reproduced,
+distributed, modified, reverse-engineered, or used in any form without
+prior written permission from the copyright holder.
 
-RESTRICTIONS:
-1. You may NOT copy, modify, or distribute the source code.
-2. You may NOT reverse engineer, decompile, or disassemble the software.
-3. You may NOT use any part of this codebase without explicit written
-   permission from the copyright holder.
+SOURCE CODE STATUS: PRIVATE
+The source code is currently closed source for security reasons.
+Public release is planned for December 2026.
 
 This repository contains documentation and architecture designs only.
-The source code is scheduled for public release in Q2 2026.
+No source code is distributed through this repository.
 
-For inquiries regarding licensing or collaboration, please contact:
-GitHub: @Anbu-2006
+For inquiries regarding licensing, collaboration, or access:
+  GitHub: https://github.com/Anbu-2006
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY ARISING FROM THE USE OF THIS DOCUMENTATION.
 

@@ -1,109 +1,270 @@
 ================================================================================
-                        HEALER APP - ARCHITECTURE OVERVIEW
+                    🩺 HEALER APP — ARCHITECTURE OVERVIEW
 ================================================================================
 
-Project: Healer App
-Version: Development (80% Complete)
-Last Updated: January 2026
-
-================================================================================
-                              APPLICATION FLOW
+1. APPLICATION ENTRY FLOW
 ================================================================================
 
-1. APP LAUNCH
-   └── MainActivity (Entry Point)
-       ├── Displays welcome screen with app introduction
-       ├── Provides "Start Detection" call-to-action button
-       └── Navigates to SecondActivity on user interaction
+  User launches app
+       │
+       ▼
+  MainActivity (page_1.xml)
+  ├── Single "Start Accident Detection" button
+  ├── On click: starts SecondActivity with FLAG_ACTIVITY_SINGLE_TOP
+  └── Calls finish() to keep a clean back stack
+       │
+       ▼
+  SecondActivity (page_2.xml)
+  ├── Shows capability check dialog (11 sensors scanned)
+  ├── Requests permissions (RECORD_AUDIO required, LOCATION optional)
+  ├── On grant: calls startDetection()
+  │   ├── Creates TrainingLogger (CSV session file)
+  │   └── Calls initializeDetectors() — wires up all 8 sensors
+  └── Live dashboard: 18+ TextViews updating in real time
 
-2. ACCIDENT DETECTION SCREEN
-   └── SecondActivity (Main Detection Interface)
-       ├── Initializes all sensor detectors
-       ├── Monitors multiple data streams simultaneously
-       ├── Processes sensor fusion for accident detection
-       └── Triggers emergency protocols when accident detected
 
-================================================================================
-                           DETECTION MODULE COMPONENTS
-================================================================================
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            DETECTION CAPABILITIES                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  Component              │  Purpose                                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ActivityDetector       │  Monitors user activity state (walking, driving)  │
-│  ShakeDetector          │  Detects sudden impacts and shaking motions       │
-│  SoundDetector          │  Analyzes ambient audio for crash sounds          │
-│  GravitySensor          │  Monitors gravitational forces and device tilt    │
-│  GyroDetector           │  Tracks rotational velocity and orientation       │
-│  LightSensor            │  Monitors ambient light level changes             │
-│  ProximitySensor        │  Detects nearby objects and obstructions          │
-│  LocationProvider       │  Provides GPS coordinates for emergency services  │
-│  OrientationHelper      │  Calculates device orientation in 3D space        │
-│  HighPassFilter         │  Filters sensor noise for accurate readings       │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-================================================================================
-                              DATA FLOW DIAGRAM
+2. SENSOR LAYER (detection/ package)
 ================================================================================
 
-    ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-    │   SENSORS    │────▶│  DETECTORS   │────▶│   FUSION     │
-    │              │     │              │     │   ENGINE     │
-    │ Accelerometer│     │ ShakeDetector│     │              │
-    │ Gyroscope    │     │ GyroDetector │     │  Analyzes    │
-    │ Microphone   │     │ SoundDetector│     │  combined    │
-    │ GPS          │     │ LocationProv │     │  sensor data │
-    │ Light        │     │ LightSensor  │     │              │
-    │ Proximity    │     │ ProximitySens│     │              │
-    └──────────────┘     └──────────────┘     └──────┬───────┘
-                                                      │
-                                                      ▼
-                                            ┌──────────────────┐
-                                            │ ACCIDENT DETECTED│
-                                            │                  │
-                                            │ • Alert User     │
-                                            │ • Log Event      │
-                                            │ • Notify Contacts│
-                                            │ • Share Location │
-                                            └──────────────────┘
+  All sensors live under com.example.healer.detection.
+  Each sensor wrapper follows the same pattern:
+    - Constructor takes Context
+    - hasSensor(): Boolean — checks hardware availability
+    - start(...callbacks) — registers SensorEventListener
+    - stop() — unregisters listener, nulls references
+    - Provides confidence boost or multiplier for fusion scoring
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │                     SENSOR INVENTORY                             │
+  ├──────────────────────┬───────────────────────────────────────────┤
+  │ ShakeDetector        │ TYPE_LINEAR_ACCELERATION / ACCELEROMETER  │
+  │                      │ 50ms throttle, speed-gated thresholds     │
+  │                      │ Classifies: Frontal, Lateral, Vertical    │
+  │                      │ Jerk detection: Δg/s ≥ 2.0               │
+  │                      │ Post-impact: 2s monitoring window         │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ SoundDetectorComp.   │ AudioRecord 44.1kHz MONO PCM_16BIT       │
+  │                      │ dBFS = 20×log10(RMS/32768)               │
+  │                      │ 1s auto-calibration, 200ms polling        │
+  │                      │ Threshold default: -50.0 dBFS             │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ GravitySensor        │ TYPE_GRAVITY at SENSOR_DELAY_GAME         │
+  │                      │ 20-sample baseline calibration            │
+  │                      │ Rollover: any axis shifts >7.0 m/s²       │
+  │                      │ 3s debounce between rollover alerts       │
+  │                      │ Orientations: FLAT_FACE_UP/DOWN,          │
+  │                      │   PORTRAIT_UP/DOWN, LANDSCAPE_LEFT/RIGHT  │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ GyroDetector         │ TYPE_GYROSCOPE at SENSOR_DELAY_GAME       │
+  │                      │ Magnitude = √(x²+y²+z²) in rad/s         │
+  │                      │ Peak threshold: 100 °/s (configurable)    │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ LightSensor          │ TYPE_LIGHT at SENSOR_DELAY_NORMAL         │
+  │                      │ 10-sample baseline, darkness = <30% base  │
+  │                      │ Conditions: Dark/Dim/Indoor/Outdoor/Sun   │
+  │                      │ Confidence: <20% → +10, <40% → +5        │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ ProximitySensor      │ TYPE_PROXIMITY at SENSOR_DELAY_NORMAL     │
+  │                      │ Binary: NEAR (in pocket) / FAR (exposed)  │
+  │                      │ Confidence: NEAR → +15, FAR → +0          │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ LocationProvider     │ GPS_PROVIDER or NETWORK_PROVIDER fallback │
+  │                      │ Updates: 1000ms / 1m minimum              │
+  │                      │ Provides: lastSpeedMps(), lastLocation    │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ OrientationHelper    │ TYPE_ROTATION_VECTOR at SENSOR_DELAY_GAME │
+  │                      │ Maintains 3×3 rotation matrix             │
+  │                      │ rotateToWorld(ax,ay,az) → world-frame     │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ ActivityDetector     │ TYPE_STEP_COUNTER + GPS speed             │
+  │                      │ States: UNKNOWN, STILL, WALKING,          │
+  │                      │         IN_VEHICLE                        │
+  │                      │ Multiplier: vehicle=1.5, walk=0.3         │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ HighPassFilter       │ Exponential smoothing (α=0.9)             │
+  │                      │ Used when TYPE_LINEAR_ACCELERATION absent │
+  ├──────────────────────┼───────────────────────────────────────────┤
+  │ DetectionCapabilities│ Scans 11 hardware capabilities at runtime │
+  │                      │ capabilityScore() = available/11 × 100%   │
+  └──────────────────────┴───────────────────────────────────────────┘
+
+
+3. DETECTION & FUSION LOGIC (in SecondActivity)
+================================================================================
+
+  Five event timestamps are tracked:
+    - shakeDetectedTime     (ShakeDetector.onCrashDetected)
+    - soundDetectedTime     (SoundDetector threshold exceeded)
+    - gyroDetectedTime      (GyroDetector peak detected)
+    - lightDarknessTime     (LightSensor sudden darkness)
+    - rolloverTime          (GravitySensor rollover detected)
+
+  Fusion algorithm — checkForAccident():
+    1. Collect all 5 timestamps into a list
+    2. hasPairWithinWindow(1500ms):
+       - For every pair (i, j) where i < j:
+         if both != 0 and |t_i - t_j| < 1500ms → correlated
+    3. If correlated AND ActivityDetector says NOT walking:
+       → ACCIDENT CONFIRMED → showAccidentAlert()
+    4. If user was WALKING → suppress (likely false positive)
+
+  Probability scoring — calculateProbability():
+    ┌─────────────────────────────┬──────────┐
+    │ Signal                      │ Points   │
+    ├─────────────────────────────┼──────────┤
+    │ Impact detected (any type)  │ +30      │
+    │ G-force > 2.5g              │ +25      │
+    │ Sound > -50 dBFS            │ +15      │
+    │ Secondary motion confirmed  │ +5       │
+    │ Proximity: NEAR (pocket)    │ +15      │
+    │ Light: <20% baseline        │ +10      │
+    │ Light: <40% baseline        │ +5       │
+    │ Gravity: upside down        │ +20      │
+    │ Gravity: orientation change │ +10      │
+    ├─────────────────────────────┼──────────┤
+    │ Activity Multiplier         │          │
+    │   IN_VEHICLE                │ ×1.5     │
+    │   STILL / UNKNOWN           │ ×1.0     │
+    │   WALKING                   │ ×0.3     │
+    └─────────────────────────────┴──────────┘
+    Final = clamp(sum × multiplier, 0, 100)
+
+
+4. DATA LAYER (TrainingLogger)
+================================================================================
+
+  CSV Schema:
+    timestamp, uptime_ms, acc_x, acc_y, acc_z, g_force, dbfs,
+    gyro_x, gyro_y, gyro_z, speed_mps, impact_type, event
+
+  Event types:
+    - "sensor"  → continuous accelerometer samples (every 50ms)
+    - "sound"   → microphone dBFS readings (every 200ms)
+    - "gyro"    → gyroscope rotation values
+    - "crash"   → confirmed impact event with type
+
+  Storage: Android/data/com.example.healer/files/logs/session_<timestamp>.csv
+  Threading: single-thread executor, buffered writes, flush every 32KB
+
+
+5. UI LAYER (Layouts)
+================================================================================
+
+  page_1.xml:
+    - LinearLayout, centered, with "Start Accident Detection" button
+    - Spare button for future features
+
+  page_2.xml:
+    - ScrollView → vertical LinearLayout
+    - Start/Stop buttons (horizontal)
+    - Status banner (detection state)
+    - Probability display (0-100%)
+    - 8 sensor sections, each with header + value TextViews:
+        Accelerometer (X/Y/Z + G-force + impact type)
+        Microphone (dBFS)
+        Gyroscope (rotation °/s)
+        Gravity (X/Y/Z + orientation)
+        Proximity (NEAR/FAR + distance)
+        Light (lux + condition)
+        Activity (state + step count)
+        GPS/Speed (m/s + km/h)
+    - Confidence breakdown (per-sensor score display)
+
+
+6. LIFECYCLE MANAGEMENT
+================================================================================
+
+  SecondActivity lifecycle:
+    onCreate   → inflate layout, bind views, wait for user
+    Start tap  → detect capabilities → show dialog → request permissions
+                 → startDetection() → initializeDetectors()
+    onPause    → stop all 8 sensors (save battery)
+    onResume   → if detectionRunning: re-create logger + re-init detectors
+    Stop tap   → stopDetection() → stop all sensors, close logger, reset state
+
+
+7. PROPOSED ML INTEGRATION (PLANNED)
+================================================================================
+
+  New packages to add:
+    com.example.healer.ml/
+      ├── AccidentClassifier.kt    — TFLite model loader & inference
+      ├── SignalProcessor.kt       — noise filtering, resampling, normalization
+      └── FeatureExtractor.kt      — raw windows → feature vectors
+
+    com.example.healer.service/
+      └── DetectionService.kt      — foreground service for background detection
+
+    app/src/main/assets/
+      └── accident_model.tflite    — trained model file
+
+  ML Pipeline:
+    Raw sensors → SignalProcessor (clean, resample to 50Hz, normalize)
+               → FeatureExtractor (2s windows, time/freq/cross features)
+               → AccidentClassifier (TFLite inference)
+               → DetectionCoordinator (ML + rules → final decision)
+
+  Model specs:
+    - Architecture: 1D-CNN or small GRU/LSTM
+    - Input: [1, window_size, num_features]
+    - Output: softmax [NORMAL, ACCIDENT, FALL, DROP]
+    - Size: <2 MB (int8 quantized)
+    - Latency: <50ms on mid-range device
+
+  Training plan:
+    1. Collect labeled data via TrainingLogger (existing)
+    2. Train offline in Python (TensorFlow/PyTorch)
+    3. Export to .tflite with int8 quantization
+    4. Integrate on-device via AccidentClassifier
+    5. Fuse ML output with existing rule-based scoring
+
+
+8. ANDROID MANIFEST SUMMARY
+================================================================================
+
+  Permissions:
+    RECORD_AUDIO           — required (sound detection)
+    MODIFY_AUDIO_SETTINGS  — auto (audio config)
+    ACCESS_FINE_LOCATION   — optional (GPS speed)
+    ACCESS_COARSE_LOCATION — optional (fallback location)
+    VIBRATE                — auto (alert feedback)
+    WAKE_LOCK              — auto (planned for service)
+    FOREGROUND_SERVICE     — planned (background detection)
+
+  Required hardware features:
+    android.hardware.microphone
+    android.hardware.sensor.accelerometer
+
+  Activities:
+    .MainActivity     — LAUNCHER, portrait, no action bar
+    .SecondActivity   — internal, portrait, parent = MainActivity
+
+  Theme: Theme.AppCompat.Light.NoActionBar
+
+
+9. BUILD CONFIGURATION
+================================================================================
+
+  Gradle: Kotlin DSL
+  Namespace: com.example.healer
+  compileSdk: 35
+  minSdk: 24 (Android 7.0 Nougat)
+  targetSdk: 35
+  JVM target: 17
+  View Binding: enabled
+
+  Key dependencies:
+    - androidx.core.ktx
+    - androidx.appcompat
+    - androidx.activity
+    - androidx.lifecycle.runtime.ktx
+    - com.google.android.material
+    - androidx.constraintlayout
+    - firebase.crashlytics
+    - TensorFlow Lite (planned)
+
 
 ================================================================================
-                              TECHNOLOGY STACK
-================================================================================
-
-• Programming Language: Kotlin
-• Platform: Android (Native)
-• Minimum SDK: API 24 (Android 7.0 Nougat)
-• Build System: Gradle with Kotlin DSL
-• Architecture Pattern: Component-based modular design
-
-================================================================================
-                              SECURITY NOTES
-================================================================================
-
-This application handles sensitive user data including:
-- Real-time location information
-- Audio recordings (for sound detection)
-- Motion patterns and activity data
-
-All sensor data is processed locally on-device. The source code remains
-closed source during development to ensure security best practices are
-properly implemented before public release.
-
-================================================================================
-                              FUTURE DEVELOPMENT
-================================================================================
-
-Planned features for upcoming releases:
-• Emergency contact auto-notification
-• Integration with emergency services APIs
-• Cloud backup for incident reports
-• Wearable device support
-• Machine learning-based detection improvements
-
-================================================================================
-                           DOCUMENT END
+                          END OF ARCHITECTURE OVERVIEW
 ================================================================================
 

@@ -1,3 +1,11 @@
-# This file keeps the assets folder in version control
-# Add your screenshots and media files here
+# This folder is reserved for screenshots and media assets.
+# Add your app screenshots, demo GIFs, and diagrams here.
+#
+# Suggested files:
+#   - screenshot_home.png         (MainActivity — Start screen)
+#   - screenshot_dashboard.png    (SecondActivity — Live sensor dashboard)
+#   - screenshot_alert.png        (Accident alert dialog)
+#   - screenshot_capabilities.png (Sensor capability check dialog)
+#   - demo.gif                    (Short app demo recording)
+#   - architecture_diagram.png    (Visual version of the data flow)
 

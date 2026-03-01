@@ -1,0 +1,358 @@
+================================================================================
+                    🩺 HEALER APP — ARCHITECTURE OVERVIEW (REFACTORED)
+================================================================================
+
+**Last Updated:** March 2025
+**Status:** 85% Complete (Major Refactoring Completed)
+**Public Release:** June 2027
+
+================================================================================
+1. APPLICATION ENTRY FLOW
+================================================================================
+
+  User launches app
+       │
+       ▼
+  MainActivity (page_1.xml)
+  ├── Single "Start Accident Detection" button
+  ├── On click: starts SecondActivity with FLAG_ACTIVITY_SINGLE_TOP
+  └── Calls finish() to keep clean back stack
+       │
+       ▼
+  SecondActivity (page_2.xml) — UI Layer ONLY
+  ├── Displays capability check dialog (11 sensors scanned)
+  ├── Requests permissions (RECORD_AUDIO required, LOCATION optional)
+  ├── On grant: creates DetectionCoordinator
+  │   ├── Coordinator starts all 10+ sensor providers
+  │   ├── Coordinator initializes fusion engine + buffer
+  │   └── All sensor callbacks routed to SecondActivity for UI updates
+  └── Live dashboard: 18+ TextViews showing real-time sensor data
+       │
+       ▼
+  User stops detection
+  ├── Coordinator.stop()
+  │   ├── Stops all sensor providers
+  │   ├── Closes TrainingLogger
+  │   └── Clears CircularSensorBuffer
+  └── SecondActivity resets UI
+
+
+================================================================================
+2. ARCHITECTURAL LAYERS (REFACTORED — CLEAN SEPARATION)
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  UI LAYER (SecondActivity.kt)                                              │
+│  ├── Pure presentation — NO logic, NO sensors                              │
+│  ├── Receives callbacks from DetectionCoordinator                          │
+│  └── Updates 18+ TextViews based on callbacks                              │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  DETECTION & FUSION LAYER (detection/ package)                             │
+│  ├── ShakeDetector.kt — Pure impact classification logic                   │
+│  ├── DetectionCoordinator.kt — Orchestrates all sensors + fusion           │
+│  ├── DetectionCapabilities.kt — Hardware capability scanner                │
+│  └── HighPassFilter.kt — Math utility (gravity removal)                    │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  SENSOR DATA ACQUISITION LAYER (sensors/ package) — RAW INPUT ONLY         │
+│  ├── BaseSensor (interface) — Contract for all sensors                     │
+│  ├── AccelProvider — Accelerometer (world-frame via OrientationHelper)     │
+│  ├── GyroProvider — Gyroscope (rad/s)                                      │
+│  ├── GravityProvider — Gravity (orientation + rollover)                    │
+│  ├── SoundProvider — Microphone (dBFS)                                     │
+│  ├── LightProvider — Light sensor (lux + darkness)                         │
+│  ├── ProximityProvider — Proximity (near/far)                              │
+│  ├── BarometerProvider — Pressure (spikes)                                 │
+│  ├── LocationProvider — GPS (speed + coords)                               │
+│  ├── OrientationHelper — Rotation vector (device→world matrix)             │
+│  └── ActivityDetector — Steps + speed → activity state                     │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  DATA PERSISTENCE LAYER (data/ package)                                    │
+│  ├── CircularSensorBuffer.kt — 2s sliding window (ring buffer)             │
+│  ├── SensorSnapshot.kt — Multi-sensor timestamped sample                   │
+│  └── TrainingLogger.kt — CSV export (world-frame normalized)               │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ML PIPELINE LAYER (ml/ package) — IN PROGRESS                             │
+│  ├── FeatureExtractor.kt — Buffer → feature vector (TFLite-ready)          │
+│  ├── [SignalProcessor.kt] — Noise filtering (planned)                      │
+│  └── [AccidentClassifier.kt] — TFLite model runner (planned)               │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  BACKGROUND SERVICE LAYER (service/ package) — PLANNED                     │
+│  └── [DetectionService.kt] — Foreground service for 24/7 detection         │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+3. SENSOR INVENTORY & SPECIFICATIONS
+================================================================================
+
+┌──────────────────┬─────────────────────┬──────────────────────────────────┐
+│ Sensor           │ Type                │ Key Characteristics              │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ AccelProvider    │ LINEAR_ACCEL /      │ World-frame m/s²                 │
+│                  │ ACCELEROMETER       │ 20ms throttle, speed-gated       │
+│                  │ + HighPassFilter    │ Frontal/Lateral/Vertical class  │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ GyroProvider     │ GYROSCOPE           │ Angular velocity (rad/s)         │
+│                  │                     │ Magnitude = √(x²+y²+z²)          │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ GravityProvider  │ GRAVITY             │ Orientation + rollover detection │
+│                  │                     │ 20-sample baseline calibration   │
+│                  │                     │ Rollover: >7 m/s² shift, 3s db  │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ SoundProvider    │ Microphone          │ dBFS = 20×log10(RMS/32768)      │
+│                  │ (AudioRecord)       │ 44.1 kHz MONO PCM_16BIT         │
+│                  │                     │ 1s auto-baseline, 200ms polling  │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ LightProvider    │ TYPE_LIGHT          │ Ambient lux + sudden darkness    │
+│                  │                     │ 10-sample baseline, <30% = dark  │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ ProximityProvider│ TYPE_PROXIMITY      │ Binary: NEAR (pocket) / FAR      │
+│                  │                     │ Confidence boost: NEAR +15, FAR  │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ BarometerProvider│ TYPE_PRESSURE       │ Atmospheric pressure (hPa)       │
+│                  │                     │ Spike: Δ ≥ 0.5 hPa in <100ms    │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ LocationProvider │ GPS / NETWORK       │ Speed (m/s), last location       │
+│                  │                     │ 1s / 1m min updates              │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ OrientationHelper│ ROTATION_VECTOR     │ 3×3 rotation matrix (device→world)
+│                  │                     │ Continuous updates               │
+├──────────────────┼─────────────────────┼──────────────────────────────────┤
+│ ActivityDetector │ STEP_COUNTER + GPS  │ UNKNOWN/STILL/WALKING/IN_VEHICLE │
+│                  │                     │ Multiplier: vehicle=1.5, walk=0.3│
+└──────────────────┴─────────────────────┴──────────────────────────────────┘
+
+
+================================================================================
+4. DETECTION & FUSION LOGIC
+================================================================================
+
+EVENT TIMESTAMP TRACKING (6 channels):
+  ├─ shakeDetectedTime ← ShakeDetector.onCrashDetected
+  ├─ soundDetectedTime ← SoundProvider threshold exceeded
+  ├─ gyroDetectedTime ← Gyro peak detection
+  ├─ lightDarknessTime ← LightProvider sudden darkness
+  ├─ rolloverTime ← GravityProvider rollover detected
+  └─ barometerSpikeTime ← BarometerProvider pressure spike
+
+FUSION WINDOW: 1500ms (any 2 events within = potential accident)
+
+PROBABILITY SCORING (0-100%):
+  Base:
+    ├─ Impact detected (any type) → +30
+    ├─ G-force > 2.5g → +25
+    ├─ Sound > -50 dBFS → +15
+    └─ Secondary motion → +5
+
+  Sensor Boosts:
+    ├─ Proximity NEAR (in pocket) → +15
+    ├─ Light sudden dark (<20%) → +10
+    ├─ Light moderate drop (<40%) → +5
+    ├─ Gravity upside down → +20
+    └─ Gravity orientation changed → +10
+
+  Activity Multiplier:
+    ├─ IN_VEHICLE → ×1.5 (high confidence)
+    ├─ STILL → ×1.0 (normal)
+    ├─ WALKING → ×0.3 (suppress false positives)
+    └─ UNKNOWN → ×1.0 (normal)
+
+  Final = clamp(base + boosts) × multiplier, range [0, 100%]
+
+
+================================================================================
+5. CIRCULAR SENSOR BUFFER (ML-Ready)
+================================================================================
+
+CAPACITY: 100 samples (~2 seconds at 50 Hz)
+THREAD-SAFE: ReadWriteLock (many concurrent readers, exclusive writer)
+
+STRUCTURE:
+  CircularSensorBuffer
+  ├── put(snapshot) ← DetectionCoordinator continuously
+  ├── getAll() ← FeatureExtractor for ML feature vector
+  ├── latest() ← UI updates
+  └── getWindow(ms) ← Temporal slicing for analysis
+
+SNAPSHOT CONTENTS:
+  timestamp, accel(XYZ + gForce), gyro(XYZ), sound(dBFS),
+  gravity(XYZ), proximity, light, speed, activity, barometer, impactType
+
+
+================================================================================
+6. TRAINING DATA SCHEMA (CSV)
+================================================================================
+
+FILENAME: session_YYYY-MM-DD_HH-mm-ss.csv
+LOCATION: Android/data/com.example.healer/files/logs/
+
+HEADER ROW:
+timestamp,uptime_ms,acc_x,acc_y,acc_z,g_force,dbfs,gyro_x,gyro_y,gyro_z,speed_mps,activity_state,impact_type,event
+
+SAMPLE ROWS:
+1708000000000,123456,0.12345,-0.23456,9.78123,1.00234,-65.43210,,,0.00000,STILL,,sensor
+1708000000400,123856,,,,,-52.12345,,,,STILL,,sound
+1708000001000,124456,1.23456,-2.34567,0.56789,2.56789,-45.00000,,,5.50000,IN_VEHICLE,Lateral Impact,crash
+
+EVENTS:
+  ├─ sensor: Continuous accel samples (every 50ms)
+  ├─ sound: Sound threshold events (every 200ms)
+  ├─ gyro: Gyro rotation peaks
+  └─ crash: Confirmed impact detection
+
+NORMALIZATION:
+  ├─ Acceleration (acc_x, acc_y, acc_z) = World-frame values (OrientationHelper normalized)
+  ├─ G-force = √(accX² + accY² + accZ²) / 9.81
+  └─ Activity_state = one of {UNKNOWN, STILL, WALKING, IN_VEHICLE}
+
+
+================================================================================
+7. DETECTOR SPECIFICATIONS
+================================================================================
+
+SHAKE DETECTOR (Detection Logic Only)
+────────────────────────────────────
+  Input: World-frame acceleration from AccelProvider
+
+  Processing:
+    ├─ G-force conversion: g = accel / 9.81
+    ├─ Jerk calculation: Δg/s = (currentG - prevG) / Δt
+    ├─ Speed-gated thresholds:
+    │   ├─ <3 km/h: ×1.3 (harder to trigger at rest)
+    │   ├─ 20-50 km/h: ×0.85 (slightly more sensitive)
+    │   └─ >50 km/h: ×0.7 (more sensitive at highway speeds)
+    └─ Classification (dominant axis):
+         ├─ Z-axis: Vertical Impact (threshold 1.2g)
+         ├─ Y-axis: Lateral Impact (threshold 1.0g)
+         └─ X-axis: Forward/Rear Impact (threshold 0.8g)
+
+  Detection Triggers:
+    ├─ Impact type classified AND last crash >800ms ago
+    ├─ OR jerk Δg/s ≥ 2.0
+    └─ OR buffer pattern spike: (max - mean) > 1.2g
+
+  Post-Impact Monitoring:
+    ├─ Window: 2000ms after impact
+    ├─ Secondary motion confirmation: g > 0.8
+    └─ Used for real-time validation
+
+
+ACTIVITY DETECTOR (Classification)
+───────────────────────────────────
+  Inputs: Step counter + GPS speed
+
+  States:
+    ├─ IN_VEHICLE: speed > 5 m/s OR steps detected + moving
+    ├─ WALKING: steps/min > 30
+    ├─ STILL: no steps, speed < 1 m/s
+    └─ UNKNOWN: insufficient data
+
+  Confidence Multiplier:
+    ├─ IN_VEHICLE = 1.5× (high confidence accident)
+    ├─ STILL = 1.0× (normal)
+    ├─ WALKING = 0.3× (suppress false positives — likely drop)
+    └─ UNKNOWN = 1.0× (normal)
+
+
+================================================================================
+8. KEY IMPROVEMENTS (POST-REFACTORING)
+================================================================================
+
+✅ MODULARITY
+   - sensors/ = pure acquisition (no logic)
+   - detection/ = pure logic (no listeners)
+   - Dependency: detection/ → sensors/, never reverse
+
+✅ TESTABILITY
+   - ShakeDetector can be tested with mock acceleration data
+   - Each provider can be tested independently
+   - No cross-contamination of concerns
+
+✅ ML-READINESS
+   - CircularSensorBuffer maintains 2s windows
+   - FeatureExtractor scaffolding ready
+   - Training data CSV with world-frame normalization
+   - TFLite integration path clear
+
+✅ CONCURRENCY
+   - DetectionCoordinator runs sensors on dedicated HandlerThread
+   - CircularSensorBuffer thread-safe (ReadWriteLock)
+   - UI updates via MainLooper callbacks
+
+✅ EXTENSIBILITY
+   - Adding new sensor: implement BaseSensor, register in DetectionCoordinator
+   - Adding new fusion logic: modify DetectionCoordinator.handleDetection()
+   - ML model swap: replace TFLite binary, no code changes needed
+
+
+================================================================================
+9. BATTERY & PERFORMANCE TARGETS
+================================================================================
+
+SENSOR POLLING:
+  ├─ Accelerometer: SENSOR_DELAY_GAME (~200Hz) + 20ms throttle → ~50Hz effective
+  ├─ Gyroscope: SENSOR_DELAY_GAME (~200Hz)
+  ├─ Gravity: SENSOR_DELAY_GAME (~200Hz)
+  ├─ Light: SENSOR_DELAY_NORMAL (~5-10Hz)
+  ├─ Proximity: SENSOR_DELAY_NORMAL (~5-10Hz)
+  ├─ Microphone: 200ms polling intervals (44.1kHz streaming)
+  └─ GPS: 1s / 1m updates
+
+ML INFERENCE:
+  ├─ Feature extraction: <10ms
+  ├─ Model inference: <50ms target
+  └─ Run on Default dispatcher (not UI thread)
+
+CSV LOGGING:
+  ├─ Buffered writes
+  ├─ Flush every 32 KB or on app exit
+  └─ Single-thread executor
+
+
+================================================================================
+10. PERMISSIONS & CAPABILITIES
+================================================================================
+
+REQUIRED:
+  ├─ RECORD_AUDIO (Microphone access for sound detection)
+  └─ Blocking permission: app won't start without it
+
+OPTIONAL:
+  ├─ ACCESS_FINE_LOCATION (GPS for accurate speed)
+  └─ ACCESS_COARSE_LOCATION (Network location fallback)
+
+AUTO-GRANTED (system level):
+  ├─ VIBRATE (device feedback)
+  ├─ MODIFY_AUDIO_SETTINGS (microphone calibration)
+  └─ FOREGROUND_SERVICE (planned for background detection)
+
+CAPABILITY SCORE:
+  └─ Scans 11 sensors, reports availability %
+     (app gracefully skips missing hardware)
+
+
+================================================================================
+11. NEXT MAJOR MILESTONES
+================================================================================
+
+Q1 2025: Signal Processor (noise filtering, resampling)
+Q2 2025: TFLite Model Integration (offline-trained classifier)
+Q3 2025: Background Detection Service (24/7 monitoring)
+Q4 2025: Emergency Notification System (auto-contact)
+Q1 2026: Cloud Backup & OTA Model Updates
+Q2 2027: Public Source Code Release
+
+================================================================================
+
