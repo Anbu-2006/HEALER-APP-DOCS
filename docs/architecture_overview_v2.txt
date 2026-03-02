@@ -2,8 +2,8 @@
                     🩺 HEALER APP — ARCHITECTURE OVERVIEW (REFACTORED)
 ================================================================================
 
-**Last Updated:** March 2025
-**Status:** 85% Complete (Major Refactoring Completed)
+**Last Updated:** March 2026
+**Status:** 85% Complete (Detection Layer 95%, ML Pipeline 15%)
 **Public Release:** June 2027
 
 ================================================================================
@@ -344,15 +344,57 @@ CAPABILITY SCORE:
 
 
 ================================================================================
-11. NEXT MAJOR MILESTONES
+11. DETECTION SYSTEM MATURITY (MARCH 2026)
 ================================================================================
 
-Q1 2025: Signal Processor (noise filtering, resampling)
-Q2 2025: TFLite Model Integration (offline-trained classifier)
-Q3 2025: Background Detection Service (24/7 monitoring)
-Q4 2025: Emergency Notification System (auto-contact)
-Q1 2026: Cloud Backup & OTA Model Updates
-Q2 2027: Public Source Code Release
+SENSOR COVERAGE:
+  ✅ 10/10 practical mobile sensors integrated
+  ✅ All sensors implement BaseSensor interface
+  ✅ Graceful fallback for missing hardware (hasSensor() checks)
+  ⏭️  Magnetometer: Deferred — RotationVector already fuses it internally
+  ⏭️  Temperature/Humidity: Skipped — rare hardware, no accident correlation
+
+DETECTION ALGORITHMS:
+  ✅ 6-channel event correlation (shake, sound, gyro, light, rollover, baro)
+  ✅ 1500ms fusion window (any 2 events = potential accident)
+  ✅ Weighted probability scoring (7 components + activity multiplier)
+  ✅ Impact axis classification (Frontal, Lateral, Vertical, Rollover)
+  ✅ Jerk detection (Δg/s ≥ 2.0)
+  ✅ Buffer spike pattern (max - mean > 1.2g)
+
+FALSE-POSITIVE SUPPRESSION:
+  ✅ Walking suppression (×0.3 multiplier + hard block)
+  ✅ Speed-gating (4 bands: <3, 3-20, 20-50, >50 km/h)
+  ✅ Multi-sensor pair requirement (single event NEVER triggers)
+  ✅ Alert debounce (5000ms), shake debounce (800ms), sound debounce (250ms)
+  ✅ Post-impact validation (2000ms secondary motion window)
+  ✅ Oldest event expiry for stale timestamps
+
+CALIBRATION:
+  ✅ Sound auto-calibration (1s baseline, capped at -3.0 dBFS)
+  ✅ Light auto-calibration (10-sample baseline)
+  ✅ Gravity auto-calibration (20-sample baseline)
+  📋 Device-specific profiles: Planned (Phase 2, currently generic thresholds)
+
+ACOUSTIC ANALYSIS:
+  ✅ Current: dBFS overall loudness (sufficient for rule-based fusion)
+  📋 Phase 2: FFT frequency bands (2-6 kHz crash signature detection)
+
+OVERALL DETECTION STATUS: 95% Complete (Rule-Based)
+  Remaining 5%: Frequency analysis + device profiles (ML Phase optimizations)
+
+
+================================================================================
+12. NEXT MAJOR MILESTONES
+================================================================================
+
+Q3 2026: Acoustic Frequency Analysis (FFT bands for crash signature)
+Q3 2026: Device-Profile Calibration System
+Q4 2026: TFLite Model Integration (offline-trained classifier)
+Q4 2026: Background Detection Service (24/7 monitoring)
+Q1 2027: Emergency Notification System (auto-contact)
+Q2 2027: Cloud Backup & OTA Model Updates
+Jun 2027: Public Source Code Release
 
 ================================================================================
 

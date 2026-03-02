@@ -1,4 +1,4 @@
-# 🔄 Healer App — Refactoring Summary (March 2025)
+# 🔄 Healer App — Refactoring Summary (March 2025, Updated March 2026)
 
 ## Overview
 Successfully refactored the Healer Accident Detection app from a monolithic structure into a **clean, modular, ML-ready architecture** while maintaining 100% functionality and improving code testability.
@@ -193,16 +193,52 @@ DetectionCoordinator
 
 ---
 
-## Next Phase: ML Integration (Q1 2025 – Q2 2026)
+## Next Phase: ML Integration & Production (Q3 2026 – Jun 2027)
 
 | Milestone | Timeline | Status |
 |-----------|----------|--------|
-| Signal Processor (noise filtering) | Q1 2025 | 📋 Planned |
-| TFLite model integration | Q2 2025 | 📋 Planned |
-| Background detection service | Q3 2025 | 📋 Planned |
-| Emergency notification system | Q4 2025 | 📋 Planned |
-| Cloud backup & OTA updates | Q1 2026 | 📋 Planned |
+| Acoustic frequency analysis (FFT) | Q3 2026 | 📋 Planned |
+| Device-profile calibration | Q3 2026 | 📋 Planned |
+| TFLite model integration | Q4 2026 | 📋 Planned |
+| Background detection service | Q4 2026 | 📋 Planned |
+| Emergency notification system | Q1 2027 | 📋 Planned |
+| Cloud backup & OTA updates | Q2 2027 | 📋 Planned |
 | **Public source release** | **June 2027** | 📋 Planned |
+
+---
+
+## Detection System Maturity (March 2026 Update)
+
+### ✅ Rule-Based Detection: 95% Complete
+
+All practical mobile sensors for accident detection have been integrated and verified:
+
+| Category | Status | Details |
+|----------|--------|---------|
+| **Sensor Coverage** | ✅ 10/10 | All practical mobile sensors active |
+| **Fusion Logic** | ✅ Complete | 6-channel, 1500ms window, pair requirement |
+| **Probability Scoring** | ✅ Complete | 7 components + activity multiplier (0–100%) |
+| **False-Positive Suppression** | ✅ Complete | Walking ×0.3, speed-gating, debounce, pair req. |
+| **Auto-Calibration** | ✅ Complete | Sound (1s), Light (10 samples), Gravity (20 samples) |
+| **Impact Classification** | ✅ Complete | Frontal, Lateral, Vertical, Rollover, General |
+| **World-Frame Normalization** | ✅ Complete | OrientationHelper rotation matrix |
+| **Edge Case Handling** | ✅ 95% | Graceful degradation for missing hardware |
+| **Acoustic Frequency Analysis** | 📋 Phase 2 | dBFS sufficient; FFT for ML phase |
+| **Device-Profile Calibration** | 📋 Phase 2 | Generic thresholds adequate |
+
+### Sensors Evaluated & Intentionally Skipped
+
+| Sensor | Reason |
+|--------|--------|
+| Magnetometer | RotationVector already fuses it internally |
+| Temperature | Extremely rare on phones (<5%); no accident correlation |
+| Humidity | No direct accident detection value |
+| Heart Rate | Phone-only scope; wearable feature |
+| Significant Motion | Too coarse; Step Counter + Accel already covers this |
+
+> **Verdict:** The detection layer is functionally complete for rule-based accident detection. Remaining improvements (acoustic frequency bands, device profiles) are optimizations that will enhance the ML pipeline — not blockers for current functionality.
+
+See: `docs/DETECTION_COMPLETENESS_CHECKLIST.md` for the full audit.
 
 ---
 
@@ -279,7 +315,8 @@ The refactoring successfully **transforms Healer from a monolithic codebase into
 
 ---
 
-**Last Updated:** March 2025  
+**Last Updated:** March 2026  
 **Status:** ✅ Complete, 0 errors, 0 conflicts  
-**Next Phase:** Q1 2025 — Signal Processor & ML integration
+**Detection Layer:** 95% Complete (Rule-Based)  
+**Next Phase:** Q3 2026 — Acoustic Frequency Analysis & ML Integration
 

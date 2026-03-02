@@ -1,13 +1,13 @@
 # 🩺 Healer App
 
-![Project Status](https://img.shields.io/badge/Status-In%20Development%20(80%25)-yellow)
+![Project Status](https://img.shields.io/badge/Status-In%20Development%20(85%25)-yellow)
 ![License](https://img.shields.io/badge/License-Proprietary-red)
 ![Platform](https://img.shields.io/badge/Platform-Android-green)
 ![Language](https://img.shields.io/badge/Language-Kotlin-purple)
 ![Min SDK](https://img.shields.io/badge/Min%20SDK-24%20(Android%207.0)-blue)
 ![ML](https://img.shields.io/badge/ML-TFLite%20(Planned)-orange)
 
-An intelligent, multi-sensor accident detection application for Android that fuses data from **8+ hardware sensors** to detect potential vehicle accidents, falls, and emergencies — and provide timely assistance.
+An intelligent, multi-sensor accident detection application for Android that fuses data from **10+ hardware sensors** to detect potential vehicle accidents, falls, and emergencies — and provide timely assistance.
 
 ---
 
@@ -49,7 +49,8 @@ This project has completed a major architectural refactoring to separate sensor 
 | 📱 **Proximity Sensor** | TYPE_PROXIMITY | Detects if phone is in pocket/covered vs exposed; boosts confidence if covered during impact | ✅ Implemented |
 | 🧭 **Orientation Helper** | TYPE_ROTATION_VECTOR | Provides world-frame rotation matrix; transforms device-frame acceleration to world-frame | ✅ Implemented |
 | 🚶 **Activity Detection** | TYPE_STEP_COUNTER + GPS | Classifies STILL / WALKING / IN_VEHICLE; suppresses false positives from walking | ✅ Implemented |
-| 🎯 **Sensor Fusion** | All sensors combined | Correlates events within time windows; multi-signal voting; confidence scoring | ✅ Implemented |
+| 🌡️ **Barometer** | TYPE_PRESSURE | Pressure spike detection (Δ ≥ 0.5 hPa in <100ms); high-confidence impact trigger | ✅ Implemented |
+| 🎯 **Sensor Fusion** | All sensors combined | 6-channel event correlation within 1500ms; weighted confidence scoring (0–100%) | ✅ Implemented |
 | 📊 **Training Logger** | CSV export | Logs timestamped sensor data for ML training; session-based CSV files | ✅ Implemented |
 | 🤖 **ML Classifier** | TensorFlow Lite | On-device accident classification from sensor features | 📋 Planned |
 
@@ -537,12 +538,12 @@ All existing sensor classes would implement this interface.
 
 #### Current Sensor Classes — Detailed Breakdown:
 
-##### `ShakeDetector.kt` — Accelerometer Impact Classifier
+##### `ShakeDetector.kt` — Impact Classification (Pure Logic, No Sensor Listener)
 | Aspect | Detail |
 |--------|--------|
-| **Sensor** | `TYPE_LINEAR_ACCELERATION` (preferred) or `TYPE_ACCELEROMETER` + HighPassFilter |
-| **Sample Rate** | `SENSOR_DELAY_UI` (~60 Hz), throttled to 50ms min interval |
-| **Processing** | Raw → HighPassFilter (if no linear accel) → OrientationHelper.rotateToWorld() → G-force conversion |
+| **Input** | World-frame acceleration from `AccelProvider` via `processAccelData(wx, wy, wz, ts)` |
+| **Sample Rate** | Driven by AccelProvider at ~50Hz effective |
+| **Processing** | G-force conversion → jerk calculation → speed-gated thresholds → impact type classification |
 | **Classification** | Dominant axis determines type: X→Forward/Rear, Y→Lateral, Z→Vertical |
 | **Thresholds (g)** | Frontal: 1.2g, Side: 1.0g, Rollover: 0.8g (all speed-adjusted) |
 | **Speed Gating** | <3 km/h: ×1.3 (harder), 20-50 km/h: ×0.85, >50 km/h: ×0.7 (more sensitive) |
@@ -551,7 +552,7 @@ All existing sensor classes would implement this interface.
 | **Post-Impact** | 2000ms monitoring window for secondary motion confirmation |
 | **Callbacks** | `onCrashDetected(type, gForce, location)`, `onImpactValues(x,y,z,gForce,type)`, `onError(msg)` |
 
-##### `SoundDetector.kt` — Microphone dBFS Monitor
+##### `SoundProvider.kt` — Microphone dBFS Monitor
 | Aspect | Detail |
 |--------|--------|
 | **Source** | `MediaRecorder.AudioSource.MIC` via `AudioRecord` |
@@ -562,7 +563,7 @@ All existing sensor classes would implement this interface.
 | **Threshold** | Default: -50.0 dBFS (configurable) |
 | **Callbacks** | `onThresholdExceeded(db)`, `onPermissionDenied()`, `onError(exception)` |
 
-##### `GravitySensor.kt` — Rollover Detector
+##### `GravityProvider.kt` — Rollover Detector
 | Aspect | Detail |
 |--------|--------|
 | **Sensor** | `TYPE_GRAVITY` at `SENSOR_DELAY_GAME` |
@@ -573,7 +574,7 @@ All existing sensor classes would implement this interface.
 | **Tilt Angle** | Calculated from gravity Y-component via arccos |
 | **Callbacks** | `onGravityChange(x,y,z,orientation)`, `onRolloverDetected(from,to)` |
 
-##### `GyroDetector.kt` — Rotation Peak Detector
+##### `GyroProvider.kt` — Rotation Peak Detector
 | Aspect | Detail |
 |--------|--------|
 | **Sensor** | `TYPE_GYROSCOPE` at `SENSOR_DELAY_GAME` |
@@ -581,7 +582,7 @@ All existing sensor classes would implement this interface.
 | **Threshold** | Peak ≥ 100 °/s (configurable, constructor param) |
 | **Callbacks** | `onValues(x,y,z,mag)`, `onPeak(mag)`, `onError(exception)` |
 
-##### `LightSensor.kt` — Sudden Darkness Detector
+##### `LightProvider.kt` — Sudden Darkness Detector
 | Aspect | Detail |
 |--------|--------|
 | **Sensor** | `TYPE_LIGHT` at `SENSOR_DELAY_NORMAL` |
@@ -591,13 +592,23 @@ All existing sensor classes would implement this interface.
 | **Confidence** | <20% baseline: +10, <40% baseline: +5, normal: +0 |
 | **Callbacks** | `onLightChange(lux, suddenDarkness)`, `onSuddenDarkness()` |
 
-##### `ProximitySensor.kt` — Pocket/Cover Detection
+##### `ProximityProvider.kt` — Pocket/Cover Detection
 | Aspect | Detail |
 |--------|--------|
 | **Sensor** | `TYPE_PROXIMITY` at `SENSOR_DELAY_NORMAL` |
 | **Logic** | Binary: distance < maxRange → NEAR (in pocket), else FAR (exposed) |
 | **Confidence** | NEAR: +15 (more likely real accident), FAR: +0 |
 | **Callback** | `onProximityChange(isNear, distance)` |
+
+##### `BarometerProvider.kt` — Pressure Spike Detector
+| Aspect | Detail |
+|--------|--------|
+| **Sensor** | `TYPE_PRESSURE` at `SENSOR_DELAY_FASTEST` |
+| **Metric** | Atmospheric pressure (hPa); tracks delta between consecutive readings |
+| **Spike Detection** | Δ ≥ 0.5 hPa within 100ms → `onPressureSpike()` (cabin pressure change = impact) |
+| **Debounce** | 2000ms between spike alerts |
+| **Optional** | Gracefully skipped if device has no barometer |
+| **Callbacks** | `onPressureData(hPa, ts)`, `onPressureSpike(delta)` |
 
 ##### `LocationProvider.kt` — GPS Speed & Position
 | Aspect | Detail |
@@ -646,7 +657,7 @@ All existing sensor classes would implement this interface.
 |--------|--------|
 | **Format** | Append-only CSV, one file per session |
 | **Location** | `Android/data/com.example.healer/files/logs/session_<timestamp>.csv` (no storage permission needed) |
-| **Schema** | `timestamp, uptime_ms, acc_x, acc_y, acc_z, g_force, dbfs, gyro_x, gyro_y, gyro_z, speed_mps, impact_type, event` |
+| **Schema** | `timestamp, uptime_ms, acc_x, acc_y, acc_z, g_force, dbfs, gyro_x, gyro_y, gyro_z, speed_mps, activity_state, impact_type, event` |
 | **Events** | `sensor` (continuous), `sound` (threshold), `gyro` (rotation), `crash` (confirmed impact) |
 | **Threading** | Single-thread executor; buffered writes flushed every 32 KB |
 | **Methods** | `logSensor(...)`, `logSound(...)`, `logGyro(...)`, `logEvent(...)`, `close()` |
@@ -707,50 +718,51 @@ All existing sensor classes would implement this interface.
 
 ---
 
-## 🔌 Sensor Data Flow (Current)
+## 🔌 Sensor Data Flow (Current — Refactored)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        HARDWARE SENSORS                         │
-│  Accelerometer  Gyroscope  Gravity  Light  Proximity  Mic  GPS │
+│  Accel  Gyro  Gravity  Light  Proximity  Mic  GPS  Baro        │
 └──────┬──────────┬──────────┬────────┬───────┬─────────┬────┬───┘
        │          │          │        │       │         │    │
        ▼          ▼          ▼        ▼       ▼         ▼    ▼
-┌──────────┐ ┌─────────┐ ┌────────┐ ┌─────┐ ┌───────┐ ┌────┐ ┌─────┐
-│  Shake   │ │  Gyro   │ │Gravity │ │Light│ │Proxim.│ │Snd │ │ GPS │
-│ Detector │ │Detector │ │ Sensor │ │Snsr │ │ Snsr  │ │Det │ │Prov │
-└────┬─────┘ └────┬────┘ └───┬────┘ └──┬──┘ └───┬───┘ └─┬──┘ └──┬──┘
-     │            │          │         │        │       │       │
-     │  ┌─────────────────┐  │         │        │       │       │
-     │  │ OrientationHelper│  │         │        │       │       │
-     │  │ (world-frame)   │  │         │        │       │       │
-     │  └────────┬────────┘  │         │        │       │       │
-     │           │           │         │        │       │       │
-     ▼           ▼           ▼         ▼        ▼       ▼       ▼
-┌────────────────────────────────────────────────────────────────────┐
-│                    SecondActivity (Fusion Engine)                   │
-│                                                                    │
-│  Event Timestamps:                                                 │
-│  ├── shakeDetectedTime    (from ShakeDetector)                     │
-│  ├── soundDetectedTime    (from SoundDetector)                     │
-│  ├── gyroDetectedTime     (from GyroDetector)                      │
-│  ├── lightDarknessTime    (from LightSensor)                       │
-│  └── rolloverTime         (from GravitySensor)                     │
-│                                                                    │
-│  Fusion Logic:                                                     │
-│  hasPairWithinWindow(1500ms) → any 2 events correlated?            │
-│  ActivityDetector: walking? → suppress false positive               │
-│  calculateProbability() → weighted score 0-100%                    │
-│                                                                    │
-│  Output: ACCIDENT CONFIRMED → Alert + Vibrate + Log                │
-└──────────────────┬─────────────────────────────────────────────────┘
-                   │
-                   ▼
-         ┌──────────────────┐
-         │  TrainingLogger   │
-         │  (CSV export for  │
-         │   ML training)    │
-         └──────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     sensors/ (Raw Providers)                     │
+│   AccelProvider  GyroProvider  GravityProvider  SoundProvider    │
+│   LightProvider  ProximityProvider  BarometerProvider            │
+│   LocationProvider  OrientationHelper  ActivityDetector          │
+│                                                                  │
+│   All implement BaseSensor interface                             │
+│   Data only — no detection logic                                 │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Raw callbacks + timestamps
+                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│           detection/DetectionCoordinator (Fusion Engine)         │
+│                                                                  │
+│  Event Timestamps (6 channels):                                  │
+│  ├── shakeDetectedTime    (from AccelProvider → ShakeDetector)   │
+│  ├── soundDetectedTime    (from SoundProvider)                   │
+│  ├── gyroDetectedTime     (from GyroProvider, ≥100°/s)          │
+│  ├── lightDarknessTime    (from LightProvider)                   │
+│  ├── rolloverTime         (from GravityProvider)                 │
+│  └── barometerSpikeTime   (from BarometerProvider)               │
+│                                                                  │
+│  Fusion: hasPairWithinWindow(1500ms) → 2+ events correlated?    │
+│  Scoring: calculateProbability() → weighted 0-100%               │
+│  Suppression: isLikelyWalking() → block, ×0.3 multiplier        │
+│                                                                  │
+│  Output: ACCIDENT CONFIRMED → Alert + Vibrate + Log             │
+└──────────────────┬─────────────────────────────────────────────┘
+                   │ DetectionListener callbacks
+           ┌───────┴───────┐
+           ▼               ▼
+    ┌──────────────┐ ┌──────────────┐
+    │SecondActivity│ │  data/       │
+    │(UI only)     │ │  Logger +    │
+    │18+ TextViews │ │  Buffer      │
+    └──────────────┘ └──────────────┘
 ```
 
 ---
@@ -860,10 +872,10 @@ timestamp,uptime_ms,acc_x,acc_y,acc_z,g_force,dbfs,gyro_x,gyro_y,gyro_z,speed_mp
 **Event Types:**
 | Event | Source | When |
 |-------|--------|------|
-| `sensor` | ShakeDetector | Every 50ms (continuous accelerometer) |
-| `sound` | SoundDetector | Every 200ms (continuous microphone) |
-| `gyro` | GyroDetector | On gyroscope change |
-| `crash` | ShakeDetector | On confirmed impact detection |
+| `sensor` | AccelProvider → ShakeDetector | Every 50ms (continuous accelerometer) |
+| `sound` | SoundProvider | Every 200ms (continuous microphone) |
+| `gyro` | GyroProvider | On gyroscope change |
+| `crash` | ShakeDetector (via DetectionCoordinator) | On confirmed impact detection |
 
 ---
 
@@ -913,28 +925,32 @@ timestamp,uptime_ms,acc_x,acc_y,acc_z,g_force,dbfs,gyro_x,gyro_y,gyro_z,speed_mp
 
 ## 📅 Roadmap & Timeline
 
-**Current Phase: ML Integration & Background Service (Dec 2024 – Jun 2027)**
+**Current Phase: Detection Maturity & ML Integration (Mar 2026 – Jun 2027)**
 
 | Milestone | Completion | Status |
 |-----------|-----------|--------|
-| ✅ Core sensor wrappers (8 sensors) | ✓ | Complete |
+| ✅ Core sensor wrappers (10+ sensors) | ✓ | Complete |
 | ✅ BaseSensor interface abstraction | ✓ | Complete (refactored) |
 | ✅ Separation of concerns (sensors/ vs detection/) | ✓ | Complete (refactored) |
-| ✅ Multi-sensor fusion algorithm (time-window) | ✓ | Complete |
+| ✅ Multi-sensor fusion algorithm (6-channel, 1500ms window) | ✓ | Complete |
 | ✅ Impact classification (Frontal, Lateral, Vertical, Rollover) | ✓ | Complete |
-| ✅ Speed-gated thresholds | ✓ | Complete |
-| ✅ Activity-based false positive suppression | ✓ | Complete |
+| ✅ Speed-gated thresholds (4 speed bands) | ✓ | Complete |
+| ✅ Activity-based false positive suppression (WALKING ×0.3) | ✓ | Complete |
+| ✅ Barometer pressure spike detection (Δ ≥ 0.5 hPa / <100ms) | ✓ | Complete |
 | ✅ Training data CSV logger (world-frame normalized) | ✓ | Complete |
-| ✅ Live sensor dashboard UI | ✓ | Complete |
-| ✅ Runtime capability detection | ✓ | Complete |
-| ✅ Circular sensor buffer (2s sliding window) | ✓ | Complete |
-| ✅ DetectionCoordinator (centralized fusion engine) | ✓ | Complete (new) |
+| ✅ Live sensor dashboard UI (18+ readouts) | ✓ | Complete |
+| ✅ Runtime capability detection (11 sensors scanned) | ✓ | Complete |
+| ✅ Circular sensor buffer (2s sliding window, ML-ready) | ✓ | Complete |
+| ✅ DetectionCoordinator (centralized fusion engine) | ✓ | Complete |
+| ✅ Auto-calibration (sound, light, gravity) | ✓ | Complete |
+| ✅ Edge case handling (missing HW, permissions, debounce) | ✓ | Complete |
 | 🔧 ML feature extraction scaffolding | ~50% | In Progress |
-| 📋 Signal processor (noise filtering + normalization) | ~0% | Planned (Q1 2025) |
-| 📋 TFLite model integration | ~0% | Planned (Q2 2025) |
-| 📋 Background detection service | ~0% | Planned (Q3 2025) |
-| 📋 Emergency notification system | ~0% | Planned (Q4 2025) |
-| 📋 Cloud backup & OTA model updates | ~0% | Planned (Q1 2026) |
+| 📋 Acoustic frequency analysis (FFT bands) | ~0% | Planned (Q3 2026) |
+| 📋 Device-profile calibration | ~0% | Planned (Q3 2026) |
+| 📋 TFLite model integration | ~0% | Planned (Q4 2026) |
+| 📋 Background detection service | ~0% | Planned (Q4 2026) |
+| 📋 Emergency notification system | ~0% | Planned (Q1 2027) |
+| 📋 Cloud backup & OTA model updates | ~0% | Planned (Q2 2027) |
 | 📋 Public source code release | ~0% | Planned (Jun 2027) |
 
 ---
