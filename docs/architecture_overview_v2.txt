@@ -3,7 +3,7 @@
 ================================================================================
 
 **Last Updated:** March 2026
-**Status:** 85% Complete (Detection Layer 95%, ML Pipeline 15%)
+**Status:** 85% Complete (Detection Layer 100%, ML Pipeline 20%)
 **Public Release:** June 2027
 
 ================================================================================
@@ -377,24 +377,42 @@ CALIBRATION:
   📋 Device-specific profiles: Planned (Phase 2, currently generic thresholds)
 
 ACOUSTIC ANALYSIS:
-  ✅ Current: dBFS overall loudness (sufficient for rule-based fusion)
-  📋 Phase 2: FFT frequency bands (2-6 kHz crash signature detection)
+  ✅ Current: dBFS overall loudness (threshold-based)
+  ✅ NEW: FFT frequency-band analysis (AudioSignalProcessor.kt)
+     Band 0:   0–500 Hz  → Engine/road noise (weight 0.2×)
+     Band 1: 500–2000 Hz → Impact/collision (weight 0.5×)
+     Band 2: 2000–6000 Hz → Glass/metal/airbag (weight 1.0×) ← Crash signature
+     Band 3: 6000–10000 Hz → Tire screech (weight 0.3×)
+  ✅ Crash signature score (0–1) boosts fusion confidence +5/+10
+  ✅ Spectral centroid + entropy exported to TrainingLogger CSV
 
-OVERALL DETECTION STATUS: 95% Complete (Rule-Based)
-  Remaining 5%: Frequency analysis + device profiles (ML Phase optimizations)
+DEVICE-PROFILE CALIBRATION:
+  ✅ DeviceProfileRegistry.kt — 30+ device models
+  ✅ Auto-detect via Build.MANUFACTURER + Build.MODEL
+  ✅ Per-device multipliers: accel, gyro, sound, light, barometer
+  ✅ Flagship (×0.90), Mid-range (×1.0), Budget (×1.10–1.15)
+  ✅ Profile logged to CSV for ML training normalization
+  ✅ Generic fallback (×1.0) for unknown devices
+
+OVERALL DETECTION STATUS: 100% Complete (Rule-Based)
+  All detection algorithms, frequency analysis, and device calibration implemented.
 
 
 ================================================================================
 12. NEXT MAJOR MILESTONES
 ================================================================================
 
-Q3 2026: Acoustic Frequency Analysis (FFT bands for crash signature)
-Q3 2026: Device-Profile Calibration System
-Q4 2026: TFLite Model Integration (offline-trained classifier)
-Q4 2026: Background Detection Service (24/7 monitoring)
-Q1 2027: Emergency Notification System (auto-contact)
-Q2 2027: Cloud Backup & OTA Model Updates
-Jun 2027: Public Source Code Release
+COMPLETED:
+  ✅ Acoustic Frequency Analysis (FFT 4-band via AudioSignalProcessor)
+  ✅ Device-Profile Calibration (30+ devices via DeviceProfileRegistry)
+  ✅ Threshold Documentation (THRESHOLD_CALIBRATION_REPORT.md)
+
+UPCOMING:
+  Q3 2026: Background Detection Service (24/7 monitoring)
+  Q3 2026: Emergency Notification System (auto-contact, countdown)
+  Q4 2026: TFLite Model Integration (offline-trained classifier)
+  Q1 2027: Cloud Backup & OTA Model Updates
+  Jun 2027: Public Source Code Release
 
 ================================================================================
 

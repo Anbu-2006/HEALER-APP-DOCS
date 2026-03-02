@@ -1,8 +1,8 @@
 # 🎯 Healer App — Detection System Completeness Checklist
 
 **Last Updated:** March 2026  
-**Detection Layer Status:** 95% Complete (Rule-Based)  
-**ML Layer Status:** 15% Complete (Scaffolding Only)
+**Detection Layer Status:** 100% Complete (Rule-Based + Frequency Analysis)  
+**ML Layer Status:** 20% Complete (Scaffolding + Feature Extraction)
 
 ---
 
@@ -138,14 +138,16 @@ All thresholds are tuned for average mid-range Android devices:
 | Light | 10-sample baseline averaging | First 10 readings |
 | Gravity | 20-sample baseline for orientation reference | First 20 readings |
 
-### 3.4 Future: Device-Profile Calibration (Phase 2)
+### 3.4 Device-Profile Calibration ✅ (NEW)
 
-Different devices have different sensor sensitivities (±20%). A future update may include:
-- Auto-detect device model via `Build.MODEL`
-- Apply device-specific sensitivity multipliers
-- OR: User-facing calibration UI ("shake your phone to calibrate")
+Different devices have different sensor sensitivities (±20%). The system now includes:
+- Auto-detect device model via `Build.MANUFACTURER` + `Build.MODEL`
+- 30+ device profiles in `DeviceProfileRegistry.kt` (Samsung, Pixel, OnePlus, Xiaomi, Redmi, POCO, Realme, Oppo, Vivo, Motorola, Nothing, Huawei, Honor, Sony, Nokia)
+- Per-device multipliers for accelerometer, gyroscope, sound, light, barometer
+- Generic fallback (×1.0) if device unknown
+- Profile logged to CSV for ML training normalization
 
-**Current recommendation:** Generic thresholds are sufficient for rule-based detection. Device profiles become important when ML model is integrated (training data must be normalized per device).
+See: `docs/THRESHOLD_CALIBRATION_REPORT.md` for detailed per-threshold justification.
 
 ---
 
@@ -171,26 +173,29 @@ Different devices have different sensor sensitivities (±20%). A future update m
 
 ---
 
-## 5. Acoustic Analysis — Current vs Ideal
+## 5. Acoustic Analysis — Current Implementation
 
-### Current Implementation ✅
+### dBFS Level Detection ✅
 - **Metric:** dBFS (decibel full-scale) — overall loudness
 - **Method:** RMS amplitude of PCM samples → dBFS conversion
 - **Threshold:** > -50.0 dBFS triggers sound event
 - **Calibration:** 1-second baseline at start
 - **Polling:** 200ms intervals
 
-### Ideal (Phase 2 — ML Refinement) 📋
-- **Frequency Analysis:** FFT to extract spectral bands (crash noise has distinct 2–6 kHz signature)
+### FFT Frequency-Band Analysis ✅ (NEW)
+- **Processor:** `AudioSignalProcessor.kt` in `ml/` package
+- **Algorithm:** Cooley-Tukey radix-2 in-place FFT
+- **Input:** Raw PCM 16-bit audio buffer (44.1 kHz)
 - **Band Classification:**
-  - 0–500 Hz: Engine rumble, road noise (ignore)
-  - 500 Hz–2 kHz: Impact/collision (medium confidence)
-  - 2–6 kHz: Glass breaking, metal impact, airbag (high confidence)
-  - 6–10 kHz: Tire screech (contextual)
-- **Benefits:** Distinguishes crash noise from music, conversation, wind
-- **When:** Planned for ML pipeline (FeatureExtractor frequency-domain features)
+  - 0–500 Hz: Engine rumble, road noise (weight: 0.2×)
+  - 500 Hz–2 kHz: Impact/collision (weight: 0.5×)
+  - 2–6 kHz: Glass breaking, metal impact, airbag (weight: 1.0×) ← **Highest confidence**
+  - 6–10 kHz: Tire screech (weight: 0.3×)
+- **Output:** `AudioSignature` with band energies, crash score (0–1), spectral centroid, spectral entropy
+- **Integration:** `SoundProvider` runs FFT every 200ms, `DetectionCoordinator` boosts confidence +5/+10 if crash signature detected
+- **Logging:** `TrainingLogger` exports `audio_crash_score` and `audio_dominant_band` columns for ML training
 
-> **Current verdict:** dBFS-only detection is adequate for rule-based fusion because it always requires a second correlated sensor event (impact, gyro, etc.). Frequency analysis will improve precision when ML model is integrated.
+> **Verdict:** Both dBFS level AND frequency-band analysis are now active. The FFT crash signature score provides additional confidence when 2–6 kHz bands dominate (glass/metal/airbag sounds).
 
 ---
 
@@ -230,14 +235,14 @@ This matrix shows which sensor pairs provide meaningful accident signals when co
 | Circular buffer (ML-ready) | ✅ 100% | 100 samples / 2 seconds, thread-safe |
 | Training data export | ✅ 100% | CSV with world-frame + activity state |
 | Edge case handling | ✅ 95% | Graceful degradation for missing hardware |
-| Acoustic frequency analysis | 📋 0% | Phase 2 — dBFS sufficient for rule-based |
-| Device-specific calibration | 📋 0% | Phase 2 — generic thresholds sufficient now |
+| Acoustic frequency analysis | ✅ 100% | FFT 4-band analysis via AudioSignalProcessor |
+| Device-specific calibration | ✅ 100% | DeviceProfileRegistry (30+ device models) |
 | ML model inference | 📋 0% | Phase 2 — scaffolding ready |
 | Background detection | 📋 0% | Requires foreground service |
 
-### Overall Detection Level: **95% Complete (Rule-Based)**
+### Overall Detection Level: **100% Complete (Rule-Based)**
 
-> The remaining 5% covers acoustic frequency analysis and device-specific calibration profiles, which are **optimizations for ML phase** — not blockers for the current rule-based system.
+> All detection algorithms, sensors, frequency analysis, and device calibration are fully implemented. Remaining work (ML inference, background service) is infrastructure — not detection logic.
 
 ---
 
@@ -245,13 +250,13 @@ This matrix shows which sensor pairs provide meaningful accident signals when co
 
 | Phase | Milestone | Timeline | Impact |
 |-------|-----------|----------|--------|
-| **Phase 1** ✅ | Rule-based fusion (current) | Complete | Functional accident detection |
-| **Phase 2** 📋 | Acoustic frequency bands (FFT) | Q3 2026 | Better crash vs noise distinction |
-| **Phase 2** 📋 | Device-profile calibration | Q3 2026 | Tighter thresholds per device |
+| **Phase 1** ✅ | Rule-based fusion | Complete | Functional accident detection |
+| **Phase 1** ✅ | Acoustic frequency bands (FFT) | Complete | Better crash vs noise distinction |
+| **Phase 1** ✅ | Device-profile calibration | Complete | Tighter thresholds per device |
+| **Phase 2** 📋 | Background service | Q3 2026 | 24/7 detection |
+| **Phase 2** 📋 | Emergency notification | Q3 2026 | Auto SOS + contacts |
 | **Phase 3** 📋 | TFLite model integration | Q4 2026 | ML-based classification |
-| **Phase 3** 📋 | Background service | Q4 2026 | 24/7 detection |
-| **Phase 4** 📋 | Emergency notification | Q1 2027 | Auto SOS + contacts |
-| **Phase 4** 📋 | Cloud model updates | Q2 2027 | OTA model refinement |
+| **Phase 3** 📋 | Cloud model updates | Q1 2027 | OTA model refinement |
 
 ---
 

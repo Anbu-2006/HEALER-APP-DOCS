@@ -152,6 +152,8 @@ app/
     │   │   ├── ShakeDetector.kt                 # Impact classification (pure logic)
     │   │   ├── DetectionCoordinator.kt          # Centralized fusion + time-window correlation
     │   │   ├── DetectionCapabilities.kt         # Runtime hardware capability check
+    │   │   ├── DeviceProfile.kt                 # Per-device sensor sensitivity data
+    │   │   ├── DeviceProfileRegistry.kt         # Auto-detect device → calibration profile (30+)
     │   │   └── HighPassFilter.kt                # Math utility: gravity removal
     │   │
     │   ├── data/                                # ── Data Persistence Layer ──
@@ -160,7 +162,8 @@ app/
     │   │   └── TrainingLogger.kt                # CSV logger (world-frame normalized data)
     │   │
     │   ├── ml/                                  # ── ML Pipeline (In Progress) ──
-    │   │   ├── FeatureExtractor.kt              # Buffer → feature vector (TFLite-ready)
+    │   │   ├── FeatureExtractor.kt              # Buffer → feature vector (48 features, TFLite-ready)
+    │   │   ├── AudioSignalProcessor.kt          # FFT frequency-band crash signature analysis
     │   │   ├── SignalProcessor.kt               # Noise filtering, normalization (planned)
     │   │   └── [AccidentClassifier.kt]          # TFLite model runner (planned)
     │   │
@@ -944,12 +947,12 @@ timestamp,uptime_ms,acc_x,acc_y,acc_z,g_force,dbfs,gyro_x,gyro_y,gyro_z,speed_mp
 | ✅ DetectionCoordinator (centralized fusion engine) | ✓ | Complete |
 | ✅ Auto-calibration (sound, light, gravity) | ✓ | Complete |
 | ✅ Edge case handling (missing HW, permissions, debounce) | ✓ | Complete |
-| 🔧 ML feature extraction scaffolding | ~50% | In Progress |
-| 📋 Acoustic frequency analysis (FFT bands) | ~0% | Planned (Q3 2026) |
-| 📋 Device-profile calibration | ~0% | Planned (Q3 2026) |
+| ✅ Acoustic frequency analysis (FFT 4-band) | ✓ | Complete |
+| ✅ Device-profile calibration (30+ devices) | ✓ | Complete |
+| 🔧 ML feature extraction scaffolding | ~60% | In Progress |
 | 📋 TFLite model integration | ~0% | Planned (Q4 2026) |
-| 📋 Background detection service | ~0% | Planned (Q4 2026) |
-| 📋 Emergency notification system | ~0% | Planned (Q1 2027) |
+| 📋 Background detection service | ~0% | Planned (Q3 2026) |
+| 📋 Emergency notification system | ~0% | Planned (Q3 2026) |
 | 📋 Cloud backup & OTA model updates | ~0% | Planned (Q2 2027) |
 | 📋 Public source code release | ~0% | Planned (Jun 2027) |
 
