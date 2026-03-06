@@ -1,7 +1,11 @@
 # 📊 Healer App — Threshold Calibration Report
 
+> ⚠️ **SUPERSEDED (March 2026):** Thresholds were recalibrated to crash-realistic levels.
+> Current: Frontal 4.0g, Lateral 3.0g, Rollover 2.0g, Jerk 8.0 g/s, Gyro 300°/s.
+> See `THRESHOLD_VALUES_REFERENCE.md` for authoritative current values.
+
 **Last Updated:** March 2026  
-**Status:** All thresholds documented & justified
+**Status:** SUPERSEDED — see updated threshold reference docs
 
 ---
 

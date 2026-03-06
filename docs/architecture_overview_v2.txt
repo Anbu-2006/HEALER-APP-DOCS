@@ -140,28 +140,41 @@
 ================================================================================
 
 EVENT TIMESTAMP TRACKING (6 channels):
-  ├─ shakeDetectedTime ← ShakeDetector.onCrashDetected
-  ├─ soundDetectedTime ← SoundProvider threshold exceeded
-  ├─ gyroDetectedTime ← Gyro peak detection
+  ├─ shakeDetectedTime ← ShakeDetector.onCrashDetected (sustained 3+ samples)
+  ├─ soundDetectedTime ← SoundProvider when dBFS > -50 threshold (gated)
+  ├─ gyroDetectedTime ← Gyro peak detection (>300°/s)
   ├─ lightDarknessTime ← LightProvider sudden darkness
   ├─ rolloverTime ← GravityProvider rollover detected
   └─ barometerSpikeTime ← BarometerProvider pressure spike
 
-FUSION WINDOW: 1500ms (any 2 events within = potential accident)
+FUSION LOGIC — IMPACT-ANCHORED (replaces "any 2 of 6"):
+  ┌────────────────────────────────────────────────────────────────┐
+  │  Rule 1: Impact (shake) MUST be present — mandatory anchor    │
+  │  Rule 2: ≥1 corroborating signal within 1500ms fusion window  │
+  │  Rule 3: Probability score must be ≥ 70% after multiplier     │
+  │  Rule 4: NOT in WALKING state (activity suppression)          │
+  │  ALL rules must pass → ACCIDENT CONFIRMED                     │
+  └────────────────────────────────────────────────────────────────┘
+
+  Previous (broken): Any 2 of 6 events within 1500ms = accident.
+  Problem: Sound fired for EVERY sample, so sound + any minor event = false alarm.
+  Fix: Sound only fires event when dBFS > -50. Impact is mandatory anchor.
 
 PROBABILITY SCORING (0-100%):
   Base:
-    ├─ Impact detected (any type) → +30
-    ├─ G-force > 2.5g → +25
+    ├─ Impact detected (any type) → +35 (rare with 4g+ thresholds, very meaningful)
+    ├─ G-force > 4.0g → +10 | > 6.0g → +20 | > 8.0g → +25 (sliding scale)
     ├─ Sound > -50 dBFS → +15
-    └─ Secondary motion → +5
+    └─ Secondary motion (deviation from 1g > 0.5g) → +5
 
   Sensor Boosts:
     ├─ Proximity NEAR (in pocket) → +15
     ├─ Light sudden dark (<20%) → +10
     ├─ Light moderate drop (<40%) → +5
     ├─ Gravity upside down → +20
-    └─ Gravity orientation changed → +10
+    ├─ Gravity orientation changed → +10
+    ├─ Barometer spike (within 3s) → +20
+    └─ Audio crash signature (2-6 kHz) → +5 to +10
 
   Activity Multiplier:
     ├─ IN_VEHICLE → ×1.5 (high confidence)
@@ -170,6 +183,7 @@ PROBABILITY SCORING (0-100%):
     └─ UNKNOWN → ×1.0 (normal)
 
   Final = clamp(base + boosts) × multiplier, range [0, 100%]
+  Must reach ≥ 70% to trigger accident confirmation.
 
 
 ================================================================================
@@ -234,19 +248,26 @@ SHAKE DETECTOR (Detection Logic Only)
     │   ├─ 20-50 km/h: ×0.85 (slightly more sensitive)
     │   └─ >50 km/h: ×0.7 (more sensitive at highway speeds)
     └─ Classification (dominant axis):
-         ├─ Z-axis: Vertical Impact (threshold 1.2g)
-         ├─ Y-axis: Lateral Impact (threshold 1.0g)
-         └─ X-axis: Forward/Rear Impact (threshold 0.8g)
+         ├─ Z-axis: Vertical Impact (threshold 4.0g)
+         ├─ Y-axis: Lateral Impact (threshold 3.0g)
+         └─ X-axis: Forward/Rear Impact (threshold 2.0g)
+
+  Sustained Impact Verification:
+    ├─ Require 3+ qualifying samples within 200ms
+    ├─ Single-frame spikes (phone drops) are filtered out
+    └─ Real crashes produce sustained high-g over 50-200ms
 
   Detection Triggers:
-    ├─ Impact type classified AND last crash >800ms ago
-    ├─ OR jerk Δg/s ≥ 2.0
-    └─ OR buffer pattern spike: (max - mean) > 1.2g
+    ├─ Sustained impact count ≥ 3 AND last crash >800ms ago
+    ├─ Qualifying = impact type classified
+    ├─ OR jerk Δg/s ≥ 8.0
+    └─ OR buffer pattern spike: (max - mean) > 3.0g
 
   Post-Impact Monitoring:
     ├─ Window: 2000ms after impact
-    ├─ Secondary motion confirmation: g > 0.8
-    └─ Used for real-time validation
+    ├─ Secondary motion: |gForce - 1.0| > 0.5 (deviation from gravity)
+    │   (Previous: gForce > 0.8 was ALWAYS true since gravity ≈ 1.0g)
+    └─ Used for probability boost (+5)
 
 
 ACTIVITY DETECTOR (Classification)
@@ -295,6 +316,18 @@ ACTIVITY DETECTOR (Classification)
    - Adding new sensor: implement BaseSensor, register in DetectionCoordinator
    - Adding new fusion logic: modify DetectionCoordinator.handleDetection()
    - ML model swap: replace TFLite binary, no code changes needed
+
+✅ FALSE POSITIVE SUPPRESSION (7 critical bugs fixed)
+   - Sound threshold gating: soundDetectedTime only set when dBFS > -50
+     (was firing for EVERY sample, causing constant false events)
+   - Crash-realistic thresholds: 4.0g/3.0g/2.0g (was 1.2g/1.0g/0.8g — hand-wave levels)
+   - Impact-anchored fusion: shake is mandatory anchor (was "any 2 of 6")
+   - Probability gate: ≥70% required (was no check at all)
+   - Gyro threshold raised: 300°/s (was 100°/s — phone-waving range)
+   - Post-impact fix: |gForce-1.0| > 0.5 (was gForce>0.8 — always true from gravity)
+   - Sustained impact: 3+ samples in 200ms (was single-sample trigger)
+   - Jerk threshold: 8.0 g/s (was 2.0 g/s)
+   - Spike pattern: (max-mean) > 3.0g (was 1.2g)
 
 
 ================================================================================
@@ -356,15 +389,22 @@ SENSOR COVERAGE:
 
 DETECTION ALGORITHMS:
   ✅ 6-channel event correlation (shake, sound, gyro, light, rollover, baro)
-  ✅ 1500ms fusion window (any 2 events = potential accident)
-  ✅ Weighted probability scoring (7 components + activity multiplier)
+  ✅ Impact-anchored fusion (shake mandatory + ≥1 corroboration within 1500ms)
+  ✅ Probability gate (≥70% required before accident confirmation)
+  ✅ Weighted probability scoring (8 components + activity multiplier)
   ✅ Impact axis classification (Frontal, Lateral, Vertical, Rollover)
-  ✅ Jerk detection (Δg/s ≥ 2.0)
-  ✅ Buffer spike pattern (max - mean > 1.2g)
+  ✅ Crash-realistic thresholds: 4.0g frontal, 3.0g lateral, 2.0g rollover
+  ✅ Jerk detection (Δg/s ≥ 8.0)
+  ✅ Buffer spike pattern (max - mean > 3.0g)
+  ✅ Sustained impact verification (3+ samples within 200ms)
+  ✅ Gyroscope peak detection (≥300°/s)
 
 FALSE-POSITIVE SUPPRESSION:
   ✅ Walking suppression (×0.3 multiplier + hard block)
   ✅ Speed-gating (4 bands: <3, 3-20, 20-50, >50 km/h)
+  ✅ Sound threshold gating (only fires event when dBFS > -50)
+  ✅ Post-impact fix: deviation from gravity |gForce-1.0| > 0.5g
+  ✅ Sustained impact: single-spike drops filtered out
   ✅ Multi-sensor pair requirement (single event NEVER triggers)
   ✅ Alert debounce (5000ms), shake debounce (800ms), sound debounce (250ms)
   ✅ Post-impact validation (2000ms secondary motion window)

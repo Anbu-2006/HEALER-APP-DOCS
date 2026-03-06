@@ -41,7 +41,7 @@ This project has completed a major architectural refactoring to separate sensor 
 | Feature | Sensor Used | Description | Status |
 |---------|-------------|-------------|--------|
 | 🔊 **Sound Detection** | Microphone (44.1 kHz PCM) | Monitors ambient sound in dBFS; detects loud crashes/impacts; auto-calibrates baseline | ✅ Implemented |
-| 📳 **Shake Detection** | Accelerometer / Linear Acceleration | Detects sudden G-force spikes; classifies Frontal, Lateral, Vertical, Rollover impacts; jerk detection (Δg/s) | ✅ Implemented |
+| 📳 **Shake Detection** | Accelerometer / Linear Acceleration | Detects sudden G-force spikes (4g+ threshold); classifies Frontal, Lateral, Vertical, Rollover impacts; jerk detection (8 g/s); sustained impact verification (3+ samples/200ms) | ✅ Implemented |
 | 🌍 **Gravity Sensor** | TYPE_GRAVITY | Tracks device orientation relative to Earth; detects rollover (>7 m/s² shift); auto-calibrates baseline | ✅ Implemented |
 | 📍 **Location Provider** | GPS / Network | Tracks speed (m/s, km/h) for speed-gated thresholds; provides last-known location for emergency use | ✅ Implemented |
 | 🔄 **Gyroscope Detection** | TYPE_GYROSCOPE | Analyzes rotational velocity (°/s); peak detection for sudden spins; feeds fusion engine | ✅ Implemented |
@@ -365,10 +365,11 @@ No sensor listeners here — all data comes from `sensors/` providers.
 |--------|--------|
 | **Input** | World-frame acceleration from `AccelProvider` via `processAccelData(wx, wy, wz, ts)` |
 | **Processing** | G-force conversion, jerk calculation, speed-gated thresholds, impact type classification |
-| **Thresholds (g)** | Frontal: 1.2, Side: 1.0, Rollover: 0.8 (speed-adjusted: <3km/h ×1.3, >50km/h ×0.7) |
-| **Jerk** | Δg/s ≥ 2.0 triggers detection |
-| **Buffer** | 20-sample g-force rolling buffer; spike = (max - mean) > 1.2g |
-| **Post-Impact** | 2000ms confirmation window for secondary motion |
+| **Thresholds (g)** | Frontal: 4.0, Side: 3.0, Rollover: 2.0 (speed-adjusted: <3km/h ×1.3, >50km/h ×0.7) |
+| **Jerk** | Δg/s ≥ 8.0 triggers detection |
+| **Buffer** | 20-sample g-force rolling buffer; spike = (max - mean) > 3.0g |
+| **Sustained Impact** | 3+ qualifying samples within 200ms required |
+| **Post-Impact** | 2000ms confirmation; secondary motion = \|gForce-1.0\| > 0.5g |
 | **Output** | `onCrashDetected(type, gForce, location)`, `onImpactValues(x,y,z,gForce,type)`, `onError(msg)` |
 | **No Sensor Listener** | ✅ Pure logic layer |
 
@@ -379,9 +380,9 @@ No sensor listeners here — all data comes from `sensors/` providers.
 | **Owns** | All provider instances, `ShakeDetector`, `CircularSensorBuffer`, `TrainingLogger` |
 | **Thread** | Dedicated `HandlerThread` for sensor processing |
 | **Event Correlation** | Tracks 6 timestamps (shake, sound, gyro, light darkness, rollover, barometer spike) |
-| **Fusion Window** | 1500ms time window — any 2 events within window = potential accident |
+| **Fusion Logic** | Impact-anchored: shake mandatory + ≥1 corroborating signal within 1500ms + probability ≥70% |
 | **Activity Check** | If WALKING detected → suppress alert (false positive) |
-| **Probability Calc** | Weighted: Impact(30) + GForce(25) + Sound(15) + Proximity(0-15) + Light(0-10) + Gravity(0-20) × Activity multiplier |
+| **Probability Calc** | Weighted: Impact(35) + GForce(10-25 sliding) + Sound(15) + Proximity(0-15) + Light(0-10) + Gravity(0-20) + Baro(0-20) + Audio(0-10) × Activity multiplier |
 | **Callbacks** | Implements `DetectionListener` — delivers all data to SecondActivity UI |
 | **Lifecycle** | `start()` → init all providers, `stop()` → cleanup, `pause()`/`resume()` for onPause/onResume |
 
@@ -548,11 +549,12 @@ All existing sensor classes would implement this interface.
 | **Sample Rate** | Driven by AccelProvider at ~50Hz effective |
 | **Processing** | G-force conversion → jerk calculation → speed-gated thresholds → impact type classification |
 | **Classification** | Dominant axis determines type: X→Forward/Rear, Y→Lateral, Z→Vertical |
-| **Thresholds (g)** | Frontal: 1.2g, Side: 1.0g, Rollover: 0.8g (all speed-adjusted) |
+| **Thresholds (g)** | Frontal: 4.0g, Side: 3.0g, Rollover: 2.0g (all speed-adjusted) |
 | **Speed Gating** | <3 km/h: ×1.3 (harder), 20-50 km/h: ×0.85, >50 km/h: ×0.7 (more sensitive) |
-| **Jerk Detection** | Δg/s ≥ 2.0 g/s triggers impact |
-| **Buffer** | Rolling 20-sample g-force buffer; spike = (max - mean) > 1.2g |
-| **Post-Impact** | 2000ms monitoring window for secondary motion confirmation |
+| **Jerk Detection** | Δg/s ≥ 8.0 g/s triggers impact |
+| **Buffer** | Rolling 20-sample g-force buffer; spike = (max - mean) > 3.0g |
+| **Sustained Impact** | Requires 3+ qualifying samples within 200ms before confirming crash |
+| **Post-Impact** | 2000ms monitoring; secondary motion = \|gForce - 1.0\| > 0.5g |
 | **Callbacks** | `onCrashDetected(type, gForce, location)`, `onImpactValues(x,y,z,gForce,type)`, `onError(msg)` |
 
 ##### `SoundProvider.kt` — Microphone dBFS Monitor
@@ -747,13 +749,13 @@ All existing sensor classes would implement this interface.
 │  Event Timestamps (6 channels):                                  │
 │  ├── shakeDetectedTime    (from AccelProvider → ShakeDetector)   │
 │  ├── soundDetectedTime    (from SoundProvider)                   │
-│  ├── gyroDetectedTime     (from GyroProvider, ≥100°/s)          │
+│  ├── gyroDetectedTime     (from GyroProvider, ≥300°/s)          │
 │  ├── lightDarknessTime    (from LightProvider)                   │
 │  ├── rolloverTime         (from GravityProvider)                 │
 │  └── barometerSpikeTime   (from BarometerProvider)               │
 │                                                                  │
-│  Fusion: hasPairWithinWindow(1500ms) → 2+ events correlated?    │
-│  Scoring: calculateProbability() → weighted 0-100%               │
+│  Fusion: Impact-anchored (shake mandatory + ≥1 corroboration)   │
+│  Scoring: calculateProbability() → weighted 0-100% (gate ≥70%)  │
 │  Suppression: isLikelyWalking() → block, ×0.3 multiplier        │
 │                                                                  │
 │  Output: ACCIDENT CONFIRMED → Alert + Vibrate + Log             │

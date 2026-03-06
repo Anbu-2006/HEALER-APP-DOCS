@@ -43,18 +43,23 @@ Every mobile-accessible hardware sensor relevant to accident detection has been 
 
 ## 2. Detection Algorithm Verification
 
-### 2.1 Fusion Logic — 6-Channel Event Correlation ✅
+### 2.1 Fusion Logic — Impact-Anchored Event Correlation ✅
 
 | Channel | Source Provider | Trigger Condition | Timestamp Field |
 |---------|----------------|-------------------|-----------------|
-| **Shake/Impact** | AccelProvider → ShakeDetector | G-force > threshold (speed-adjusted) OR jerk ≥ 2.0 g/s OR buffer spike | `shakeDetectedTime` |
-| **Sound** | SoundProvider | dBFS > -50.0 (configurable) | `soundDetectedTime` |
-| **Gyro Spin** | GyroProvider | Rotation magnitude ≥ 100 °/s | `gyroDetectedTime` |
+| **Shake/Impact** | AccelProvider → ShakeDetector | G-force > threshold (4g+ speed-adjusted) AND sustained 3+ samples/200ms OR jerk ≥ 8.0 g/s OR buffer spike (max-mean > 3.0g) | `shakeDetectedTime` |
+| **Sound** | SoundProvider | dBFS > -50.0 (GATED — only fires above threshold) | `soundDetectedTime` |
+| **Gyro Spin** | GyroProvider | Rotation magnitude ≥ 300 °/s | `gyroDetectedTime` |
 | **Sudden Darkness** | LightProvider | Lux < 30% of baseline AND >50% drop | `lightDarknessTime` |
 | **Rollover** | GravityProvider | Any axis shift > 7.0 m/s² from baseline | `rolloverTime` |
 | **Pressure Spike** | BarometerProvider | Δ ≥ 0.5 hPa within 100ms | `barometerSpikeTime` |
 
-**Fusion Rule:** Any 2 of the 6 channels triggering within **1500ms** = potential accident → proceed to probability scoring.
+**Fusion Rules:**
+1. Impact (shake) MUST be present — mandatory anchor
+2. ≥1 corroborating signal within **1500ms** fusion window
+3. Probability score must be ≥ **70%** after activity multiplier
+4. NOT in WALKING state (activity suppression)
+All rules must pass → ACCIDENT CONFIRMED
 
 ### 2.2 Probability Scoring — Weighted Confidence ✅
 
@@ -92,31 +97,35 @@ Every mobile-accessible hardware sensor relevant to accident detection has been 
 | **Shake Debounce** | 800ms minimum between consecutive impact detections | ✅ Active |
 | **Sound Debounce** | 250ms minimum between sound event updates | ✅ Active |
 | **Barometer Debounce** | 2000ms between pressure spike alerts | ✅ Active |
-| **Pair Requirement** | Single-sensor events alone NEVER trigger accident — always requires 2+ correlated events | ✅ Active |
-| **Post-Impact Validation** | 2000ms window monitors for secondary motion confirmation | ✅ Active |
-| **Oldest Event Expiry** | If events are paired but outside 1500ms, oldest event is expired | ✅ Active |
+| **Pair Requirement** | Single-sensor events alone NEVER trigger accident — impact is mandatory anchor + corroboration | ✅ Active |
+| **Probability Gate** | Score must be ≥70% after activity multiplier to confirm accident | ✅ Active |
+| **Sustained Impact** | 3+ qualifying samples within 200ms required (filters single-spike drops) | ✅ Active |
+| **Sound Gating** | Sound event only set when dBFS > -50 (not every sample) | ✅ Active |
+| **Post-Impact Validation** | 2000ms window monitors for secondary motion: \|gForce-1.0\| > 0.5 | ✅ Active |
+| **Oldest Event Expiry** | Stale timestamps beyond fusion window are not considered | ✅ Active |
 
 ### 2.4 Impact Classification — Axis-Based ✅
 
 | Impact Type | Dominant Axis | Threshold (g) | Speed-Adjusted Range |
 |-------------|---------------|---------------|---------------------|
-| **Vertical Impact** | Z-axis | 1.2g | 0.84g – 1.56g |
-| **Lateral Impact** | Y-axis | 1.0g | 0.70g – 1.30g |
-| **Forward/Rear Impact** | X-axis | 0.8g | 0.56g – 1.04g |
+| **Vertical Impact** | Z-axis | 4.0g | 2.80g – 5.20g |
+| **Lateral Impact** | Y-axis | 3.0g | 2.10g – 3.90g |
+| **Forward/Rear Impact** | X-axis | 2.0g | 1.40g – 2.60g |
 | **Rollover** | Gravity shift | 7.0 m/s² | Fixed (no speed adjustment) |
-| **General Impact** | Jerk-based | 2.0 g/s | Fixed |
-| **Buffer Spike** | Pattern-based | (max-mean) > 1.2g | Fixed |
+| **General Impact** | Jerk-based | 8.0 g/s | Fixed |
+| **Buffer Spike** | Pattern-based | (max-mean) > 3.0g | Fixed |
+| **Sustained** | Sample count | 3+ in 200ms | Fixed |
 
 ---
 
 ## 3. Threshold Calibration Strategy
 
-### 3.1 Current Approach: Generic Hardcoded Thresholds ✅
+### 3.1 Current Approach: Crash-Realistic Thresholds ✅
 
-All thresholds are tuned for average mid-range Android devices:
-- G-force thresholds: Frontal 1.2g, Side 1.0g, Rollover 0.8g
-- Sound threshold: -50.0 dBFS
-- Gyro peak: 100 °/s
+All thresholds are tuned to crash-realistic levels (well above human movement range):
+- G-force thresholds: Frontal 4.0g, Side 3.0g, Rollover 2.0g
+- Sound threshold: -50.0 dBFS (gated — only fires event above threshold)
+- Gyro peak: 300 °/s
 - Barometer spike: 0.5 hPa / 100ms
 - Gravity rollover: 7.0 m/s² axis shift
 - Light darkness: <30% of calibrated baseline
