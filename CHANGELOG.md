@@ -40,3 +40,4 @@ Release notes and development milestones.
 - [2026-07-06 13:51] docs(arch): document telehealth architecture, WebRTC signaling, and Room DB schema
 - [2026-07-06 18:09] docs(hipaa): add data privacy, encryption at rest, and HIPAA compliance specifications
 - [2026-07-07 09:25] docs(bluetooth): document BLE GATT service UUIDs and biometric packet formats
+- [2026-07-07 11:37] docs(api): publish REST API contracts for provider matching and appointment booking
