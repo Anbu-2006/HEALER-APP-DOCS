@@ -51,3 +51,4 @@ Release notes and development milestones.
 - [2026-07-10 09:30] docs(hipaa): add data privacy, encryption at rest, and HIPAA compliance specifications
 - [2026-07-10 12:06] docs(bluetooth): document BLE GATT service UUIDs and biometric packet formats
 - [2026-07-10 14:42] docs(api): publish REST API contracts for provider matching and appointment booking
+- [2026-07-10 17:18] style(showcase): create interactive Android screenshot mockups and feature matrix
