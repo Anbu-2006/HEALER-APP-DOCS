@@ -58,3 +58,4 @@ Release notes and development milestones.
 - [2026-07-11 13:45] docs(api): publish REST API contracts for provider matching and appointment booking
 - [2026-07-11 15:54] style(showcase): create interactive Android screenshot mockups and feature matrix
 - [2026-07-11 18:02] docs(arch): document telehealth architecture, WebRTC signaling, and Room DB schema
+- [2026-07-11 20:10] docs(hipaa): add data privacy, encryption at rest, and HIPAA compliance specifications
