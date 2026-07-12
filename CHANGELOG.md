@@ -59,3 +59,4 @@ Release notes and development milestones.
 - [2026-07-11 15:54] style(showcase): create interactive Android screenshot mockups and feature matrix
 - [2026-07-11 18:02] docs(arch): document telehealth architecture, WebRTC signaling, and Room DB schema
 - [2026-07-11 20:10] docs(hipaa): add data privacy, encryption at rest, and HIPAA compliance specifications
+- [2026-07-12 09:22] docs(bluetooth): document BLE GATT service UUIDs and biometric packet formats
