@@ -72,3 +72,4 @@ Release notes and development milestones.
 - [2026-07-16 12:46] docs(bluetooth): document BLE GATT service UUIDs and biometric packet formats
 - [2026-07-16 15:59] docs(api): publish REST API contracts for provider matching and appointment booking
 - [2026-07-16 19:11] style(showcase): create interactive Android screenshot mockups and feature matrix
+- [2026-07-17 09:25] docs(arch): document telehealth architecture, WebRTC signaling, and Room DB schema
