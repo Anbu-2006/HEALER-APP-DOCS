@@ -1,0 +1,40 @@
+PROPRIETARY SOFTWARE LICENSE
+============================
+
+Copyright (c) 2026 Anbu (@Anbu-2006). All Rights Reserved.
+
+NOTICE
+------
+This repository is the official public showcase for the Healer App — an
+AI-powered on-device accident detection system for Android. It contains
+documentation, architecture specifications, ML pipeline descriptions,
+and promotional materials ONLY.
+
+The underlying Android source code, compiled binaries, TensorFlow Lite
+models, and proprietary algorithms are NOT included in this repository
+and remain the exclusive intellectual property of the copyright holder.
+
+RESTRICTIONS
+------------
+You may NOT:
+  1. Reproduce, distribute, or modify the proprietary source code.
+  2. Reverse-engineer the compiled APK or TFLite model binaries.
+  3. Use the Healer name, branding, or documentation for commercial
+     purposes without prior written consent.
+
+You MAY:
+  1. Read and reference the public documentation for educational purposes.
+  2. Star, watch, and share this repository.
+  3. Open issues to report bugs or request features.
+  4. Contact the developer for collaboration or licensing inquiries.
+
+DISCLAIMER
+----------
+THE SOFTWARE AND DOCUMENTATION ARE PROVIDED "AS IS", WITHOUT WARRANTY
+OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THIS
+SOFTWARE OR DOCUMENTATION.
+
+CONTACT
+-------
+GitHub: https://github.com/Anbu-2006
